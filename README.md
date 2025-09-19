@@ -3,7 +3,7 @@ Project Aim / Objectives:
 
 An automated live data fetcher, which uses return data of the S&P 500, interest rate data, inflation indidcators 
 amongst other macroeconomic factors to determine influence of each using simple regression analysis. 
-Combines live financial data retrieval, regression modell=ing and strategy backtesting in a single, reproducible notebook. 
+Combines live financial data retrieval, regression modelling and strategy backtesting in a single, reproducible notebook. 
 
 Key Features:
 - Computes monthly returns and lagged variables, caputuring delayed market reaction.
