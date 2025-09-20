@@ -1,0 +1,59 @@
+#update for custom portfolio data, with historic returns on csv/excel file as followed: Date column (year-month-date), asset 1, asset2, asset3 monthly prices
+#first column must be dates, others are asset values
+
+#if in colab
+import pandas as pd
+from google.colab import files  
+
+# if in excel 
+uploaded = files.upload()
+data_raw = pd.read_excel(list(uploaded.keys())[0], parse_dates=['Date'], index_col='Date')
+
+#to compute returns automatically, handles mutliple assets at once
+returns = data_raw.pct_change().dropna()
+
+#gen lagged variables
+lagged = returns.shift(1).add_suffix('_Lag1')
+returns_lagged = pd.concat([returns, lagged], axis=1).dropna()
+
+#running ols regression for each asset
+import statsmodels.api as sm
+
+dependent = 'Asset1'
+predictors = [col for col in returns_lagged.columns if col != dependent]
+
+X = sm.add_constant(returns_lagged[predictors])
+y = returns_lagged[dependent]
+
+model = sm.OLS(y, X).fit(cov_type='HC3')  # robust standard errors
+print(model.summary())
+returns_lagged['Predicted'] = model.predict(X)
+
+#rolling regression
+window = 12
+rolling_coefs = pd.DataFrame(index=returns_lagged.index[window-1:], columns=predictors)
+for i in range(window-1, len(returns_lagged)):
+    X_win = returns_lagged[predictors].iloc[i-window+1:i+1]
+    y_win = returns_lagged[dependent].iloc[i-window+1:i+1]
+    X_win_const = sm.add_constant(X_win)
+    model_win = sm.OLS(y_win, X_win_const).fit()
+    rolling_coefs.iloc[i-window+1] = model_win.params[1:]  # skip constant
+
+rolling_coefs.plot(figsize=(12,5), title=f"Rolling Coefficients for {dependent}")
+
+#quick test
+returns_lagged['Signal'] = (returns_lagged['Predicted'] > 0).astype(int)
+returns_lagged['Strategy_Return'] = returns_lagged['Signal'] * returns_lagged[dependent]
+returns_lagged['Cumulative_Strategy'] = (1 + returns_lagged['Strategy_Return']).cumprod()
+returns_lagged['Cumulative_Asset'] = (1 + returns_lagged[dependent]).cumprod()
+
+returns_lagged[['Cumulative_Asset', 'Cumulative_Strategy']].plot(figsize=(12,5), title="Strategy vs Asset")
+
+#actionable feedback 
+if model.rsquared < 0.05:
+    print("Warning: model explains very little variance. Consider adding more factors.")
+if returns_lagged['Strategy_Return'].mean() > returns_lagged[dependent].mean():
+    print("Strategy shows potential alpha versus the asset’s buy-and-hold.")
+if rolling_coefs.abs().max().max() > 0.5:
+    print("High sensitivity detected in certain periods; risk may be elevated.")
+
